@@ -27,7 +27,8 @@ DEFAULT_CHANNEL = "@mz_creations_official"
 DEFAULT_CHANNEL_TITLE = "MZ Creations Official"
 DB_PATH = "bot.db"
 DOWNLOAD_DIR = "downloads"
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB Telegram Bot API limit
+COOKIES_FILE = "cookies.txt"       # takle auto use hobe, na takle skip
+MAX_FILE_SIZE = 50 * 1024 * 1024   # 50MB Telegram limit
 # ================================================
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -198,15 +199,35 @@ async def send_welcome(chat, user):
 
 
 # ==================== yt-dlp ====================
-def yt_search(query: str):
+def _base_ydl_opts():
     opts = {
         "quiet": True,
         "no_warnings": True,
-        "default_search": "ytsearch1",
         "noplaylist": True,
-        "skip_download": True,
-        "extract_flat": False,
+        "nocheckcertificate": True,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "ios", "web_safari"],
+                "player_skip": ["webpage", "configs"],
+            }
+        },
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+            ),
+        },
     }
+    if os.path.exists(COOKIES_FILE):
+        opts["cookiefile"] = COOKIES_FILE
+    return opts
+
+
+def yt_search(query: str):
+    opts = _base_ydl_opts()
+    opts["default_search"] = "ytsearch1"
+    opts["skip_download"] = True
+    opts["extract_flat"] = False
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(f"ytsearch1:{query}", download=False)
@@ -218,13 +239,9 @@ def yt_search(query: str):
 
 
 def yt_to_voice(url: str, outdir: str):
-    opts = {
-        "format": "bestaudio/best",
-        "outtmpl": os.path.join(outdir, "%(id)s.%(ext)s"),
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
-    }
+    opts = _base_ydl_opts()
+    opts["format"] = "bestaudio/best"
+    opts["outtmpl"] = os.path.join(outdir, "%(id)s.%(ext)s")
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
         src = ydl.prepare_filename(info)
@@ -243,13 +260,9 @@ def yt_to_voice(url: str, outdir: str):
 
 
 def yt_to_video(url: str, outdir: str):
-    opts = {
-        "format": "best[ext=mp4][filesize<50000000]/best[ext=mp4]/best",
-        "outtmpl": os.path.join(outdir, "%(id)s.%(ext)s"),
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
-    }
+    opts = _base_ydl_opts()
+    opts["format"] = "best[ext=mp4][filesize<50000000]/best[ext=mp4]/best"
+    opts["outtmpl"] = os.path.join(outdir, "%(id)s.%(ext)s")
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
         return ydl.prepare_filename(info), info
@@ -306,7 +319,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # admin state machine
     if user.id in ADMIN_IDS and context.user_data.get("admin_state"):
         await handle_admin_state(update, context)
         return
